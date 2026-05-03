@@ -132,7 +132,7 @@ Ball-by-ball structured log:
 
 * **Frontend:** React + Vite
 * **Charts:** Recharts
-* **AI Model:** Gemini 1.5 Flash (Vision API)
+* **AI Model:** Gemini 3 Flash (Vision API)
 * **Video Processing:** HTML5 Video + Canvas
 * **Styling:** CSS (Glassmorphism + Neon UI)
 

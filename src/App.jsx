@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import './App.css'
 
+/**
+ * AnimatedNumber Component
+ * Animates a numeric value from 0 to the target value.
+ */
 function AnimatedNumber({ value, suffix = "" }) {
   const [displayValue, setDisplayValue] = useState(0);
   useEffect(() => {
@@ -60,6 +64,10 @@ Return in EXACT format:
 "additionalNotes": "..."
 }`;
 
+/**
+ * isValidCricketFrame
+ * Guards against low-resolution or non-action frames.
+ */
 function isValidCricketFrame(img) {
   return img.width >= 300 && img.height >= 300;
 }
@@ -73,21 +81,28 @@ const MOCK_DATA = [
   { shotType: "slog sweep", ballType: "full toss", shotDirection: 300, shotZone: "leg-side", isBoundary: true, isDefensive: false, gamePhase: "death", confidence: 0.78, frameTime: 8.9 }
 ];
 
+/**
+ * generateMatchStory
+ * Derives a narrative from ball-by-ball data.
+ */
 function generateMatchStory(deliveries) {
   if (!deliveries || deliveries.length === 0) return "";
-  const total = deliveries.length;
-  const boundaries = deliveries.filter(d => d && d.isBoundary).length;
-  const firstHalf = deliveries.slice(0, Math.ceil(total / 2));
-  const secondHalf = deliveries.slice(Math.ceil(total / 2));
-  const firstHalfAggro = firstHalf.filter(d => d && !d.isDefensive).length / firstHalf.length;
-  const secondHalfAggro = secondHalf.length > 0 ? secondHalf.filter(d => d && !d.isDefensive).length / secondHalf.length : 0;
+  const validDeliveries = deliveries.filter(d => d !== null);
+  if (validDeliveries.length === 0) return "";
+
+  const total = validDeliveries.length;
+  const boundaries = validDeliveries.filter(d => d.isBoundary).length;
+  const firstHalf = validDeliveries.slice(0, Math.ceil(total / 2));
+  const secondHalf = validDeliveries.slice(Math.ceil(total / 2));
+  const firstHalfAggro = firstHalf.filter(d => !d.isDefensive).length / (firstHalf.length || 1);
+  const secondHalfAggro = secondHalf.length > 0 ? secondHalf.filter(d => !d.isDefensive).length / secondHalf.length : 0;
   
   let story = "";
   if (firstHalfAggro < 0.5) story += "The innings began cautiously with a focus on defensive stability. ";
   else story += "The batter took an aggressive stance right from the opening deliveries. ";
   
-  const dominantZone = Object.entries(deliveries.reduce((acc, d) => {
-    if (d && d.shotZone && d.shotZone !== 'unknown') acc[d.shotZone] = (acc[d.shotZone] || 0) + 1;
+  const dominantZone = Object.entries(validDeliveries.reduce((acc, d) => {
+    if (d.shotZone && d.shotZone !== 'unknown') acc[d.shotZone] = (acc[d.shotZone] || 0) + 1;
     return acc;
   }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || 'various zones';
   
@@ -99,11 +114,17 @@ function generateMatchStory(deliveries) {
   return story;
 }
 
+/**
+ * callGeminiVision
+ * Handles API communication with Gemini 3 Flash.
+ */
 async function callGeminiVision(base64, mimeType) {
   try {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Missing API Key");
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,13 +135,23 @@ async function callGeminiVision(base64, mimeType) {
               { text: CRICKET_PROMPT }
             ]
           }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1000 }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
         })
       }
     );
+
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error?.message || "API request failed");
+    }
+
     const data = await response.json();
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const clean = raw.replace(/```json|```/g, '').trim();
+    
+    // Robust JSON extraction
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const clean = jsonMatch ? jsonMatch[0] : raw;
+    
     try {
       return JSON.parse(clean);
     } catch (err) {
@@ -161,6 +192,10 @@ const BALL_COLORS = {
   "unknown": "#94a3b8",
 };
 
+/**
+ * WagonWheel Component
+ * Plots shots on a cricket field.
+ */
 function WagonWheel({ analyses }) {
   const cx = 155, cy = 155, r = 130;
   const angleToXY = (deg, radius) => ({
@@ -179,7 +214,8 @@ function WagonWheel({ analyses }) {
     { label: "Point", a: 90 },
     { label: "3rd Man", a: 155 },
   ];
-  const valid = analyses.filter(a => a && a.shotZone !== "unknown" && a.confidence !== "low");
+  const valid = (analyses || []).filter(a => a && a.shotZone !== "unknown" && (parseFloat(a.confidence) || 0) > 0.4);
+  
   return (
     <svg viewBox="0 0 310 310" width="100%" style={{ maxWidth: 280, display: "block", margin: "0 auto" }}>
       <ellipse cx={cx} cy={cy} rx={r} ry={r * 0.82} fill="#14532d" stroke="#4ade80" strokeWidth={1.5} />
@@ -210,7 +246,7 @@ function WagonWheel({ analyses }) {
         );
       })}
       {valid.length === 0 && (
-        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="9" fill="#86efac" fontFamily="monospace" opacity={0.5}>Analyze shots to plot</text>
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="9" fill="#86efac" fontFamily="monospace" opacity={0.5}>No valid shots plotted</text>
       )}
     </svg>
   );
@@ -257,18 +293,21 @@ function App() {
   // Typing effect for Match Insights
   useEffect(() => {
     if (analyses.length > 0) {
-      const dominantZone = Object.entries(analyses.reduce((acc, a) => {
-        if (a && a.shotZone && a.shotZone !== 'unknown') acc[a.shotZone] = (acc[a.shotZone] || 0) + 1;
+      const validA = analyses.filter(a => a !== null);
+      if (validA.length === 0) return;
+
+      const dominantZone = Object.entries(validA.reduce((acc, a) => {
+        if (a.shotZone && a.shotZone !== 'unknown') acc[a.shotZone] = (acc[a.shotZone] || 0) + 1;
         return acc;
       }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || 'various';
 
-      const dominantPhase = Object.entries(analyses.reduce((acc, a) => {
-        if (a && a.gamePhase && a.gamePhase !== 'unknown') acc[a.gamePhase] = (acc[a.gamePhase] || 0) + 1;
+      const dominantPhase = Object.entries(validA.reduce((acc, a) => {
+        if (a.gamePhase && a.gamePhase !== 'unknown') acc[a.gamePhase] = (acc[a.gamePhase] || 0) + 1;
         return acc;
       }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || 'all phases';
 
-      const dominantShot = Object.entries(analyses.reduce((acc, a) => {
-        if (a && a.shotType && a.shotType !== 'unknown') acc[a.shotType] = (acc[a.shotType] || 0) + 1;
+      const dominantShot = Object.entries(validA.reduce((acc, a) => {
+        if (a.shotType && a.shotType !== 'unknown') acc[a.shotType] = (acc[a.shotType] || 0) + 1;
         return acc;
       }, {})).sort((a, b) => b[1] - a[1])[0]?.[0] || 'mixed shots';
 
@@ -296,6 +335,7 @@ function App() {
     setProgress('')
     setActiveFrame(0)
     setWarningMessage('')
+    setCommentary('')
     if (file.type.startsWith('image/')) setMediaType('image')
     else if (file.type.startsWith('video/')) setMediaType('video')
     else setMediaType(null)
@@ -320,6 +360,10 @@ function App() {
     else { setYoutubeId(null); setYoutubeError('Invalid YouTube URL'); }
   };
 
+  /**
+   * extractVideoFrames
+   * Extracts up to 'count' frames from a video file.
+   */
   const extractVideoFrames = (file, count = 6) => {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video')
@@ -343,7 +387,9 @@ function App() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
             const base64 = canvas.toDataURL('image/jpeg', 0.75).split(',')[1]
             frames.push({ time: timestamps[i], base64: base64 })
-          } catch (e) {}
+          } catch (e) {
+            // Skip frame on failure
+          }
         }
         URL.revokeObjectURL(url); resolve(frames)
       }
@@ -353,7 +399,7 @@ function App() {
 
   const handleAnalyze = async () => {
     if (!media) return
-    setIsAnalyzing(true); setAnalyses([]); setWarningMessage(''); setProgress('Preparing analysis...')
+    setIsAnalyzing(true); setAnalyses([]); setWarningMessage(''); setProgress('Preparing neural analysis...')
     try {
       if (mediaType === 'image') {
         const base64 = await new Promise((resolve, reject) => {
@@ -362,13 +408,13 @@ function App() {
         })
         const img = new Image(); img.src = `data:${media.type};base64,${base64}`
         await new Promise(r => { img.onload = r; img.onerror = r })
-        if (!isValidCricketFrame(img)) { setWarningMessage('⚠️ Please upload a clear cricket action image.'); setProgress(''); return; }
+        if (!isValidCricketFrame(img)) { setWarningMessage('⚠️ Image resolution too low for accurate analysis.'); setProgress(''); return; }
         const result = await callGeminiVision(base64, media.type)
-        if (!result) { setWarningMessage('Analysis failed.'); setProgress(''); return; }
+        if (!result) { setWarningMessage('⚠️ AI analysis failed for this image.'); setProgress(''); return; }
         setAnalyses([result]); setProgress('Analysis complete.')
       } else if (mediaType === 'video') {
         const frames = await extractVideoFrames(media, 6)
-        if (frames.length === 0) { setWarningMessage('⚠️ Please upload a clear cricket action video.'); setProgress(''); return; }
+        if (frames.length === 0) { setWarningMessage('⚠️ No valid action frames could be extracted.'); setProgress(''); return; }
         const results = []
         for (let i = 0; i < frames.length; i++) {
           const frame = frames[i]; setActiveFrame(i); setProgress(`Analyzing frame ${i + 1} of ${frames.length}...`)
@@ -376,21 +422,22 @@ function App() {
           if (result) results.push({ ...result, frameTime: frame.time })
           setAnalyses([...results])
         }
-        if (results.length === 0) { setWarningMessage('⚠️ Analysis failed. Please ensure the footage is clear.'); setProgress(''); return; }
-        setProgress(`Analysis complete — ${results.length} frames processed.`)
+        if (results.length === 0) { setWarningMessage('⚠️ Analysis failed. Ensure clear cricket action is visible.'); setProgress(''); return; }
+        setProgress(`Analysis complete — ${results.length} insights derived.`)
       }
     } catch (err) { setWarningMessage(`⚠️ Analysis error: ${err.message}`); setProgress(``) }
     finally { setIsAnalyzing(false) }
   }
 
   const generateCommentary = async () => {
+    if (analyses.length === 0) return;
     try {
       setIsCommentaryLoading(true)
       const summaryText = analyses.map((a, i) =>
-        `Ball ${i + 1}${a?.frameTime ? " (" + a.frameTime + "s)" : ""}: ${a?.shotType || 'unknown'} off a ${a?.ballType || 'unknown'}, direction ${a?.shotDirection || 0}°, zone: ${a?.shotZone || 'unknown'}${a?.isBoundary ? ", BOUNDARY" : ""}${a?.isDefensive ? ", defensive" : ""}`
+        `Ball ${i + 1}${a?.frameTime ? " (" + a.frameTime.toFixed(1) + "s)" : ""}: ${a?.shotType || 'unknown'} off a ${a?.ballType || 'unknown'}, direction ${a?.shotDirection || 0}°, zone: ${a?.shotZone || 'unknown'}${a?.isBoundary ? ", BOUNDARY" : ""}${a?.isDefensive ? ", defensive" : ""}`
       ).join('\n');
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: "You are legendary cricket commentator Harsha Bhogle. Based on this ball-by-ball data:\n\n" + summaryText + "\n\nWrite dramatic exciting commentary." }] }],
@@ -400,34 +447,42 @@ function App() {
       const data = await response.json(); const fullText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Could not generate commentary.';
       setCommentary('');
       for (let i = 0; i < fullText.length; i++) {
-        await new Promise(r => setTimeout(r, 18)); setCommentary(prev => prev + fullText[i]);
+        await new Promise(r => setTimeout(r, 15)); setCommentary(prev => prev + fullText[i]);
       }
     } catch (err) { setCommentary('Error generating commentary: ' + err.message); }
     finally { setIsCommentaryLoading(false) }
   };
 
   const exportReport = () => {
-    const reportText = "PitchIQ Analysis Report\n" + analyses.map((a, i) =>
-      `Ball ${i + 1}: ${a?.shotType} | Ball: ${a?.ballType} | Zone: ${a?.shotZone}`
-    ).join('\n') + "\n\nCommentary: " + commentary;
+    if (analyses.length === 0) return;
+    const reportText = "========================================\nPITCHIQ — AI CRICKET ANALYSIS REPORT\n========================================\nGenerated: " + new Date().toLocaleString() + "\n\n--- BALL-BY-BALL DATA ---\n" + analyses.map((a, i) =>
+      `Ball ${i + 1}: ${a?.shotType || 'unknown'} | Ball: ${a?.ballType || 'unknown'} | Zone: ${a?.shotZone || 'unknown'} | Direction: ${a?.shotDirection || 0}° | Runs: ${a?.isBoundary ? '4/6' : (a?.isDefensive ? '0' : '1s/2s')}`
+    ).join('\n') + "\n\n--- AI COMMENTARY ---\n" + (commentary || 'Not generated') + "\n\n========================================\nPowered by PitchIQ x Gemini 3 Flash\n========================================";
     const blob = new Blob([reportText], { type: 'text/plain' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pitchiq-report.txt'; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `pitchiq-analysis-${Date.now()}.txt`; a.click();
   };
 
   const handleRunDemo = () => {
-    setIsAnalyzing(true); setAnalyses([]); setProgress('Simulating neural analysis...');
-    setTimeout(() => { setAnalyses(MOCK_DATA); setIsAnalyzing(false); }, 1500);
+    if (isAnalyzing) return;
+    setIsAnalyzing(true); setAnalyses([]); setWarningMessage(''); setProgress('Simulating neural analysis from pre-cached match data...');
+    setTimeout(() => { setAnalyses(MOCK_DATA); setIsAnalyzing(false); setProgress('Demo data loaded successfully.'); }, 1500);
   };
 
   return (
     <>
       <style>{`@keyframes slide { 0% { transform: translateX(-100%); } 50% { transform: translateX(200%); } 100% { transform: translateX(-100%); } }`}</style>
+      
+      {/* Analysis Overlay */}
       {isAnalyzing && (
         <div className="analysis-overlay">
           <div className="analysis-spinner-large"></div>
-          <div className="analysis-step-text">{progress}</div>
+          <div className="analysis-step-text">
+            {progress}
+            <div style={{ fontSize: '0.8rem', opacity: 0.6, marginTop: '12px' }}>This may take a few seconds...</div>
+          </div>
         </div>
       )}
+
       <div className="app-container">
         <header className="header">
           <div className="header-inner">
@@ -441,13 +496,36 @@ function App() {
             <div className="header-status">
               <span className="status-dot"></span>
               <span>SYSTEM ONLINE</span>
-              <button onClick={handleRunDemo} disabled={isAnalyzing} className="hover-lift" style={{ marginLeft: '16px', padding: '6px 12px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '6px', color: '#38bdf8', fontSize: '10px', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.1em' }}>⚡ Run Demo</button>
+              <button 
+                onClick={handleRunDemo} 
+                disabled={isAnalyzing} 
+                className="hover-lift" 
+                style={{ 
+                  marginLeft: '16px', 
+                  padding: '6px 12px', 
+                  background: 'rgba(56, 189, 248, 0.1)', 
+                  border: '1px solid rgba(56, 189, 248, 0.3)', 
+                  borderRadius: '6px', 
+                  color: '#38bdf8', 
+                  fontSize: '10px', 
+                  fontWeight: 700, 
+                  cursor: isAnalyzing ? 'not-allowed' : 'pointer', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.1em' 
+                }}
+              >
+                ⚡ Run Demo
+              </button>
             </div>
           </div>
+          
           <div className="section-divider" style={{ margin: '0' }}></div>
+          
           <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1rem 2rem 0.5rem' }}>
             <h2 className="section-heading">Match Analytics</h2>
           </div>
+          
+          {/* Hero Stat Cards */}
           <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 2rem 1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
             {[
               { label: 'Total Runs', value: analyses.length > 0 ? analyses.reduce((sum, a) => sum + (a && a.isBoundary ? 4 : (a && a.isDefensive ? 0 : 1)), 0) : 0, icon: '🏏', color: '#22c55e' },
@@ -458,7 +536,7 @@ function App() {
               <div key={i} className="glass-card hover-lift" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ fontSize: '2rem', filter: `drop-shadow(0 0 10px ${stat.color}40)` }}>{stat.icon}</div>
                 <div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{stat.label}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 700, color: stat.color }}>
                     <AnimatedNumber value={stat.value} />
                   </div>
@@ -470,112 +548,162 @@ function App() {
         </header>
 
         <main className="main-content">
+          {/* YouTube Section */}
           <section className="youtube-section" style={{ marginBottom: '24px' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(74, 222, 128, 0.15)', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <label style={{ fontSize: '13px', color: '#4ade80', fontFamily: 'monospace', fontWeight: 600 }}>📺 Paste YouTube Match Link</label>
-              <input type="text" value={youtubeUrl} onChange={handleYoutubeChange} placeholder="https://www.youtube.com/watch?v=..." style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'rgba(0, 0, 0, 0.2)', border: youtubeError ? '1px solid #ef4444' : '1px solid rgba(74, 222, 128, 0.3)', color: 'white', fontFamily: 'monospace', fontSize: '13px' }} />
+            <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '13px', color: '#4ade80', fontFamily: 'monospace', fontWeight: 600, display: 'block', marginBottom: '8px' }}>📺 Paste YouTube Match Link</label>
+                <input 
+                  type="text" 
+                  value={youtubeUrl} 
+                  onChange={handleYoutubeChange} 
+                  placeholder="https://www.youtube.com/watch?v=..." 
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'rgba(0, 0, 0, 0.2)', border: youtubeError ? '1px solid #ef4444' : '1px solid rgba(74, 222, 128, 0.3)', color: 'white', fontFamily: 'monospace', fontSize: '13px' }} 
+                />
+                {youtubeError && <div style={{ color: '#ef4444', fontSize: '11px', marginTop: '4px', fontFamily: 'monospace' }}>{youtubeError}</div>}
+              </div>
+              
               {youtubeId && (
-                <div style={{ marginTop: '12px' }}>
-                  <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '8px' }}>
+                <div style={{ marginTop: '8px', animation: 'fade-in 0.5s ease' }}>
+                  <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '12px', border: '1px solid var(--border)' }}>
                     <iframe style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} src={`https://www.youtube.com/embed/${youtubeId}`} title="YouTube Match" frameBorder="0" allowFullScreen></iframe>
                   </div>
-                  <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(245, 158, 11, 0.1)', borderLeft: '4px solid #f59e0b', borderRadius: '4px 8px 8px 4px', color: '#fbbf24', fontFamily: 'monospace', fontSize: '12px' }}>
-                    <strong>⚠️ NOTE:</strong> Scrub through the video and upload a 5-10s clip for analysis.
+                  
+                  <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                    <div style={{ padding: '16px', background: 'rgba(245, 158, 11, 0.08)', borderLeft: '4px solid #f59e0b', borderRadius: '4px 12px 12px 4px', color: '#fbbf24', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6 }}>
+                      <strong>💡 TIP:</strong> Scrub to a key delivery, pause, and upload a short clip of that moment for AI analysis.
+                    </div>
+                    
+                    <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Select Moment (mm:ss)</label>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <input 
+                          type="text" 
+                          value={youtubeTimestamp} 
+                          onChange={(e) => setYoutubeTimestamp(e.target.value)} 
+                          placeholder="01:45" 
+                          style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border)', color: 'white', fontFamily: 'monospace' }}
+                        />
+                        <button 
+                          onClick={() => setYoutubeClipMessage(`Upload the clip corresponding to ${youtubeTimestamp || 'the selected moment'} below.`)}
+                          style={{ padding: '8px 16px', borderRadius: '6px', background: 'var(--accent)', color: 'var(--bg-primary)', border: 'none', fontWeight: 700, fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          SET MOMENT
+                        </button>
+                      </div>
+                      {youtubeClipMessage && <div style={{ fontSize: '11px', color: 'var(--accent)', fontFamily: 'monospace' }}>{youtubeClipMessage}</div>}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           </section>
 
+          {/* Upload Section */}
           <section className="upload-section">
             <div className={`upload-zone${dragOver ? ' drag-over' : ''}`} onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
               <div className="upload-icon">📂</div>
-              <p className="upload-text">Drag & drop cricket footage here</p>
+              <p className="upload-text">Drag & drop match footage here</p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '16px' }}>Supports clear batting/bowling action clips (MP4, JPG, PNG)</p>
               <button className="upload-browse-btn" onClick={() => fileInputRef.current?.click()}>Browse Files</button>
               <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleInputChange} style={{ display: 'none' }} />
             </div>
           </section>
 
+          {/* Value Proposition Section (visible when no media) */}
           {analyses.length === 0 && !mediaURL && (
-            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginTop: '32px' }}>
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginTop: '32px' }}>
               {[
-                { emoji: '🎯', title: 'Shot Detection', desc: 'Identifies cover drives, pull shots, sweeps, and more.' },
-                { emoji: '🏏', title: 'Ball Analysis', desc: 'Detects delivery type like yorker, bouncer, etc.' },
-                { emoji: '🗺️', title: 'Wagon Wheel', desc: 'Plots shot direction on a live cricket field map.' }
+                { emoji: '🎯', title: 'Shot Detection', desc: 'Identifies 15+ shot types including cover drives, pulls, and sweeps instantly.' },
+                { emoji: '🏏', title: 'Ball Analysis', desc: 'Detects delivery types like yorkers, bouncers, and full tosses automatically.' },
+                { emoji: '🗺️', title: 'Wagon Wheel', desc: 'Plots every shot direction on a virtual cricket field with boundary detection.' }
               ].map((card, i) => (
-                <div key={i} style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(74, 222, 128, 0.15)', borderRadius: '12px', padding: '20px' }}>
-                  <span style={{ fontSize: '28px' }}>{card.emoji}</span>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#4ade80' }}>{card.title}</div>
-                  <div style={{ fontSize: '12px', color: '#6b7280' }}>{card.desc}</div>
+                <div key={i} className="glass-card hover-lift" style={{ padding: '24px' }}>
+                  <span style={{ fontSize: '32px', marginBottom: '12px', display: 'block' }}>{card.emoji}</span>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent)', marginBottom: '8px', textTransform: 'uppercase' }}>{card.title}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{card.desc}</div>
                 </div>
               ))}
             </section>
           )}
 
+          {/* Preview Section */}
           {mediaURL && (
             <section className="preview-section">
-              <div className="preview-card">
-                <div className="preview-media" style={{ marginBottom: '1.25rem' }}>
-                  {mediaType === 'image' ? <img src={mediaURL} alt="Preview" className="preview-img" /> : <video src={mediaURL} controls className="preview-video" />}
+              <div className="preview-card glass-card" style={{ padding: '20px' }}>
+                <div className="preview-media" style={{ marginBottom: '1.25rem', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)', background: '#000' }}>
+                  {mediaType === 'image' ? <img src={mediaURL} alt="Preview" className="preview-img" style={{ maxHeight: '400px', width: '100%', objectFit: 'contain' }} /> : <video src={mediaURL} controls className="preview-video" style={{ maxHeight: '400px', width: '100%' }} />}
                 </div>
-                <button className={`analyze-btn${isAnalyzing ? ' analyzing' : ''}`} onClick={handleAnalyze} disabled={isAnalyzing}>
-                  {isAnalyzing ? 'Analyzing...' : '🔍 Analyze with AI'}
+                <button className={`analyze-btn${isAnalyzing ? ' analyzing' : ''}`} onClick={handleAnalyze} disabled={isAnalyzing} style={{ height: '48px' }}>
+                  {isAnalyzing ? <><span className="analyze-spinner"></span> Processing...</> : '🔍 Analyze with Gemini 3 Flash'}
                 </button>
-                {warningMessage && <div style={{ color: '#ef4444', textAlign: 'center', marginTop: '16px' }}>{warningMessage}</div>}
+                {warningMessage && <div style={{ color: '#ef4444', textAlign: 'center', marginTop: '16px', fontSize: '12px', fontFamily: 'monospace', background: 'rgba(239, 68, 68, 0.05)', padding: '10px', borderRadius: '8px' }}>{warningMessage}</div>}
               </div>
             </section>
           )}
 
+          {/* Results Section */}
           {analyses.length > 0 && (
             <section className="results-section">
-              <h2 className="results-heading">Analysis Results</h2>
-              {analyses.map((a, i) => (
-                <div key={i} className="glass-card" style={{ padding: '1.5rem', marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                    <span style={{ color: '#4ade80', fontWeight: 700 }}>BALL {i + 1}</span>
-                    <span style={{ color: '#94a3b8' }}>{((parseFloat(a?.confidence) || 0) * 100).toFixed(0)}% Confidence</span>
+              <h2 className="results-heading">
+                <span className="results-icon">📊</span>
+                Analysis Results
+              </h2>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+                {analyses.map((a, i) => (
+                  <div key={i} className="glass-card hover-lift" style={{ padding: '20px', borderLeft: `4px solid ${a?.isBoundary ? '#ef4444' : '#4ade80'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase' }}>DELIVERY {i + 1} {a?.frameTime ? `— ${a.frameTime.toFixed(1)}s` : ''}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{(parseFloat(a?.confidence) * 100 || 0).toFixed(0)}% Match</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                      <div><div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>SHOT</div><div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px', textTransform: 'capitalize' }}>{a?.shotType || 'unknown'}</div></div>
+                      <div><div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>BALL</div><div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px', textTransform: 'capitalize' }}>{a?.ballType || 'unknown'}</div></div>
+                      <div><div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>ZONE</div><div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px', textTransform: 'capitalize' }}>{a?.shotZone || 'unknown'}</div></div>
+                    </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
-                    <div><div style={{ fontSize: '10px', color: '#6b7280' }}>SHOT</div><div style={{ color: '#10b981', fontWeight: 700 }}>{a?.shotType}</div></div>
-                    <div><div style={{ fontSize: '10px', color: '#6b7280' }}>BALL</div><div style={{ color: '#ef4444', fontWeight: 700 }}>{a?.ballType}</div></div>
-                    <div><div style={{ fontSize: '10px', color: '#6b7280' }}>ZONE</div><div style={{ color: '#4ade80', fontWeight: 700 }}>{a?.shotZone}</div></div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
 
               <div className="section-divider"></div>
-              <h2 className="section-heading">AI Insights</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-                <div className="glass-card story-card" style={{ padding: '24px' }}>
-                  <div style={{ color: 'var(--secondary)', fontWeight: 700, marginBottom: '8px' }}>📖 MATCH STORY</div>
-                  <div style={{ color: '#e2e8f0', lineHeight: 1.6 }}>{displayStory}</div>
+              
+              {/* AI Narrative Section */}
+              <h2 className="section-heading">AI Narrative Insights</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '32px' }}>
+                <div className="glass-card story-card hover-lift" style={{ padding: '24px', borderLeft: '4px solid var(--secondary)' }}>
+                  <div style={{ color: 'var(--secondary)', fontWeight: 700, marginBottom: '12px', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>📖 MATCH STORY</div>
+                  <div style={{ color: '#e2e8f0', lineHeight: 1.7, fontSize: '14px' }}>{displayStory || 'Awaiting narrative generation...'}</div>
                 </div>
-                <div className="glass-card" style={{ padding: '24px', borderLeft: '4px solid #4ade80' }}>
-                  <div style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '8px' }}>🤖 MATCH INSIGHTS</div>
-                  <div className="typing-cursor" style={{ color: '#e2e8f0' }}>{displayInsight}</div>
+                <div className="glass-card hover-lift" style={{ padding: '24px', borderLeft: '4px solid var(--accent)' }}>
+                  <div style={{ color: 'var(--accent)', fontWeight: 700, marginBottom: '12px', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>🤖 STRATEGIC INSIGHTS</div>
+                  <div className="typing-cursor" style={{ color: '#e2e8f0', lineHeight: 1.7, fontSize: '14px' }}>{displayInsight || 'Deriving intelligence...'}</div>
                 </div>
               </div>
 
               <div className="section-divider"></div>
-              <h2 className="section-heading">Shot Intelligence</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: analyses.length > 1 ? '1fr 1.5fr' : '1fr', gap: '24px' }}>
+              
+              {/* Shot Intelligence Section */}
+              <h2 className="section-heading">Spatial Intelligence</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: analyses.length > 1 ? '1fr 1.5fr' : '1fr', gap: '24px', marginBottom: '32px' }}>
                 <div className="glass-card" style={{ padding: '24px', textAlign: 'center' }}>
-                  <div style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: '16px' }}>WAGON WHEEL</div>
+                  <div style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: '20px', fontSize: '13px', textTransform: 'uppercase' }}>WAGON WHEEL MAP</div>
                   <WagonWheel analyses={analyses} />
                 </div>
+                
                 {analyses.length > 1 && (
                   <div className="glass-card" style={{ padding: '24px' }}>
-                    <div style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: '16px' }}>TIMELINE LOG</div>
-                    <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                    <div style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: '16px', fontSize: '13px', textTransform: 'uppercase' }}>SESSION TIMELINE</div>
+                    <div style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '8px' }}>
                       <table className="timeline-table">
                         <thead><tr><th>Time</th><th>Shot</th><th>Ball</th><th>Runs</th></tr></thead>
                         <tbody>
                           {analyses.map((a, idx) => (
-                            <tr key={idx} className={activeFrame === a?.frameTime ? 'active-row' : ''} onClick={() => setActiveFrame(a?.frameTime)}>
-                              <td>{a?.frameTime?.toFixed(1)}s</td>
-                              <td>{a?.shotType}</td>
-                              <td>{a?.ballType}</td>
-                              <td>{a?.isBoundary ? '4/6' : (a?.isDefensive ? '0' : '1s/2s')}</td>
+                            <tr key={idx} className={activeFrame === idx ? 'active-row' : ''} onClick={() => setActiveFrame(idx)}>
+                              <td style={{ color: 'var(--accent)' }}>{a?.frameTime ? a.frameTime.toFixed(1) + 's' : (idx + 1)}</td>
+                              <td style={{ textTransform: 'capitalize' }}>{a?.shotType || 'unknown'}</td>
+                              <td style={{ textTransform: 'capitalize' }}>{a?.ballType || 'unknown'}</td>
+                              <td style={{ fontWeight: 700, color: a?.isBoundary ? '#ef4444' : '#e2e8f0' }}>{a?.isBoundary ? '4/6' : (a?.isDefensive ? '0' : '1s/2s')}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -585,6 +713,7 @@ function App() {
                 )}
               </div>
 
+              {/* Statistical Breakdown */}
               {analyses.length > 1 && (() => {
                 const shotData = Object.entries(analyses.reduce((acc, a) => {
                   if (!a) return acc;
@@ -592,49 +721,67 @@ function App() {
                   acc[key] = (acc[key] || 0) + 1;
                   return acc;
                 }, {})).map(([name, count]) => ({ name, count }));
+                
                 return (
                   <div className="glass-card" style={{ padding: '24px', marginTop: '24px' }}>
-                    <div style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: '16px' }}>SHOT DISTRIBUTION</div>
-                    <ResponsiveContainer width="100%" height={200}>
+                    <div style={{ color: 'var(--accent)', fontWeight: 600, marginBottom: '24px', fontSize: '13px', textTransform: 'uppercase' }}>SHOT DISTRIBUTION ANALYTICS</div>
+                    <ResponsiveContainer width="100%" height={240}>
                       <BarChart data={shotData}>
-                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} />
-                        <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} allowDecimals={false} />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="var(--accent)" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} />
+                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} allowDecimals={false} />
+                        <Tooltip 
+                          contentStyle={{ background: '#0f172a', border: '1px solid var(--border)', borderRadius: '8px', color: '#fff' }}
+                          itemStyle={{ color: 'var(--accent)' }}
+                        />
+                        <Bar dataKey="count" fill="var(--accent)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 );
               })()}
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-                <button onClick={generateCommentary} disabled={isCommentaryLoading || isAnalyzing} style={{ padding: '10px 20px', borderRadius: '8px', background: 'linear-gradient(135deg, #166534, #15803d)', color: 'white', border: 'none', cursor: 'pointer' }}>
-                  {isCommentaryLoading ? '⏳ Generating...' : '🎙️ Generate Commentary'}
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
+                <button 
+                  onClick={generateCommentary} 
+                  disabled={isCommentaryLoading || isAnalyzing} 
+                  style={{ padding: '12px 24px', borderRadius: '10px', background: 'linear-gradient(135deg, #166534, #15803d)', color: 'white', border: 'none', cursor: (isCommentaryLoading || isAnalyzing) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', transition: 'all 0.2s ease', boxShadow: '0 4px 15px rgba(22, 101, 52, 0.3)' }}
+                >
+                  {isCommentaryLoading ? '🎙️ GENERATING...' : '🎙️ HARSHA BHOGLE AI'}
                 </button>
-                <button onClick={exportReport} disabled={analyses.length === 0 || isAnalyzing} style={{ padding: '10px 20px', borderRadius: '8px', background: 'transparent', color: analyses.length === 0 || isAnalyzing ? '#4b5563' : '#4ade80', border: `1px solid ${analyses.length === 0 || isAnalyzing ? '#374151' : '#4ade80'}`, cursor: 'pointer' }}>📄 Export Report</button>
+                <button 
+                  onClick={exportReport} 
+                  disabled={analyses.length === 0 || isAnalyzing} 
+                  style={{ padding: '12px 24px', borderRadius: '10px', background: 'transparent', color: (analyses.length === 0 || isAnalyzing) ? '#4b5563' : '#4ade80', border: `1px solid ${(analyses.length === 0 || isAnalyzing) ? '#374151' : '#4ade80'}`, cursor: (analyses.length === 0 || isAnalyzing) ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '13px', transition: 'all 0.2s ease' }}
+                >
+                  📄 EXPORT REPORT
+                </button>
               </div>
 
+              {/* Commentary Box */}
               {commentary && (
-                <div style={{ marginTop: '16px', background: '#000', border: '1px solid #4ade80', borderRadius: '8px', padding: '16px' }}>
-                  <div style={{ fontSize: '10px', color: '#6b7280', textTransform: 'uppercase', marginBottom: '8px' }}>🎙️ AI COMMENTARY</div>
-                  <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '12px', color: '#4ade80', whiteSpace: 'pre-wrap' }}>{commentary}</pre>
+                <div style={{ marginTop: '20px', background: 'rgba(0, 0, 0, 0.4)', border: '1px solid var(--accent)', borderRadius: '12px', padding: '24px', boxShadow: '0 0 30px rgba(34, 197, 94, 0.1)' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.2em', fontWeight: 800 }}>🎙️ LIVE AI COMMENTARY</div>
+                  <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '13px', color: 'var(--accent)', whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{commentary}</pre>
                 </div>
               )}
 
-              <div className="section-divider"></div>
-              <div className="glass-card why-pitchiq-card" style={{ padding: '32px' }}>
-                <h2 className="section-heading" style={{ color: 'var(--secondary)' }}>Why PitchIQ?</h2>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '24px', marginTop: '24px' }}>
+              <div className="section-divider" style={{ margin: '48px 0' }}></div>
+              
+              {/* Why PitchIQ Card */}
+              <div className="glass-card why-pitchiq-card" style={{ padding: '40px', borderRadius: '24px' }}>
+                <h2 className="section-heading" style={{ color: 'var(--secondary)', marginBottom: '32px' }}>Why PitchIQ?</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '32px' }}>
                   {[
-                    { icon: '💎', title: 'Actionable Intelligence', desc: 'Converts raw footage into structured analytics.' },
-                    { icon: '📈', title: 'Coaching Optimization', desc: 'Analyze player technique with precision.' },
-                    { icon: '🎯', title: 'Strategic Edge', desc: 'Data-driven decision making for matches.' }
+                    { icon: '💎', title: 'Actionable Intelligence', desc: 'Converts unstructured video into structured, searchable analytics instantly.' },
+                    { icon: '📈', title: 'Coaching Optimization', desc: 'Identify technique patterns and optimize player performance with AI precision.' },
+                    { icon: '🎯', title: 'Strategic Edge', desc: 'Empower your team with data-driven decision making for every match.' }
                   ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '16px' }}>
-                      <span style={{ fontSize: '1.5rem' }}>{item.icon}</span>
+                    <div key={i} style={{ display: 'flex', gap: '20px' }}>
+                      <span style={{ fontSize: '2rem' }}>{item.icon}</span>
                       <div>
-                        <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{item.title}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{item.desc}</div>
+                        <div style={{ fontWeight: 800, color: '#f1f5f9', marginBottom: '6px', fontSize: '15px' }}>{item.title}</div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.6 }}>{item.desc}</div>
                       </div>
                     </div>
                   ))}
@@ -644,8 +791,8 @@ function App() {
           )}
         </main>
 
-        <footer style={{ padding: '40px 20px', textAlign: 'center', color: '#6b7280', fontSize: '12px', fontFamily: 'monospace' }}>
-          &copy; 2026 PITCHIQ AI CRICKET INTELLIGENCE. ALL RIGHTS RESERVED.
+        <footer style={{ padding: '60px 20px 40px', textAlign: 'center', color: '#475569', fontSize: '11px', fontFamily: 'monospace', letterSpacing: '0.1em' }}>
+          &copy; 2026 PITCHIQ AI CRICKET INTELLIGENCE &bull; POWERED BY GEMINI 3 FLASH &bull; ALL RIGHTS RESERVED.
         </footer>
       </div>
     </>
