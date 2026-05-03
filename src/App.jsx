@@ -34,7 +34,7 @@ function AnimatedNumber({ value, suffix = "" }) {
   return <span>{displayValue}{suffix}</span>;
 }
 
-const CRICKET_PROMPT = `Return ONLY valid JSON. No explanation, no markdown.
+const CRICKET_PROMPT = `Return ONLY valid JSON. No explanation, no markdown, no extra text.
 
 You are a cricket analyst AI. Analyze the image and detect:
 * shotType (cover drive, pull, cut, sweep, defensive, etc.)
@@ -49,7 +49,7 @@ You are a cricket analyst AI. Analyze the image and detect:
 * confidence (0 to 1)
 * additionalNotes (short cricket reasoning)
 
-Return in EXACT format:
+Return EXACTLY this JSON schema:
 {
 "shotType": "...",
 "ballType": "...",
@@ -140,22 +140,41 @@ async function callGeminiVision(base64, mimeType) {
       }
     );
 
+    const fallbackData = {
+      shotType: "unknown",
+      ballType: "unknown",
+      battingHand: "unknown",
+      pitchLength: "unknown",
+      shotDirection: 0,
+      shotZone: "unknown",
+      isBoundary: false,
+      isDefensive: false,
+      gamePhase: "unknown",
+      confidence: 0.2,
+      additionalNotes: "AI uncertain"
+    };
+
     if (!response.ok) {
       const errData = await response.json();
-      throw new Error(errData.error?.message || "API request failed");
+      console.error("API error:", errData.error?.message);
+      return null;
     }
 
     const data = await response.json();
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     
-    // Robust JSON extraction
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const clean = jsonMatch ? jsonMatch[0] : raw;
-    
     try {
-      return JSON.parse(clean);
+      return JSON.parse(raw.replace(/```json|```/g, '').trim());
     } catch (err) {
-      return null;
+      try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+      } catch (e2) {
+        console.error("Gemini raw response:", raw);
+      }
+      return fallbackData;
     }
   } catch (error) {
     return null;
@@ -410,7 +429,7 @@ function App() {
         await new Promise(r => { img.onload = r; img.onerror = r })
         if (!isValidCricketFrame(img)) { setWarningMessage('⚠️ Image resolution too low for accurate analysis.'); setProgress(''); return; }
         const result = await callGeminiVision(base64, media.type)
-        if (!result) { setWarningMessage('⚠️ AI analysis failed for this image.'); setProgress(''); return; }
+        if (!result) { setWarningMessage('⚠️ Unable to extract structured data. Showing best-effort analysis.'); setProgress(''); return; }
         setAnalyses([result]); setProgress('Analysis complete.')
       } else if (mediaType === 'video') {
         const frames = await extractVideoFrames(media, 6)
@@ -422,7 +441,7 @@ function App() {
           if (result) results.push({ ...result, frameTime: frame.time })
           setAnalyses([...results])
         }
-        if (results.length === 0) { setWarningMessage('⚠️ Analysis failed. Ensure clear cricket action is visible.'); setProgress(''); return; }
+        if (results.length === 0) { setWarningMessage('⚠️ Unable to extract structured data. Showing best-effort analysis.'); setProgress(''); return; }
         setProgress(`Analysis complete — ${results.length} insights derived.`)
       }
     } catch (err) { setWarningMessage(`⚠️ Analysis error: ${err.message}`); setProgress(``) }
