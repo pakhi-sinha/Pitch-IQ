@@ -21,7 +21,7 @@ export default async function handler(request, response) {
       })
       .join('\n')
 
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-pro'
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {

@@ -32,7 +32,7 @@ Create `.env.local`:
 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-2.5-pro
 ```
 
 Run with Vercel dev so `/api/analyze` and `/api/commentary` work locally:
@@ -57,7 +57,7 @@ When running only Vite, the demo works, but live AI analysis requires the Vercel
 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-2.5-pro
 ```
 
 4. Deploy.

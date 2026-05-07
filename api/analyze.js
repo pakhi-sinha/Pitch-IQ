@@ -33,7 +33,7 @@ export default async function handler(request, response) {
       return response.status(503).json({ error: 'GEMINI_API_KEY is not configured on the server.' })
     }
 
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-pro'
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
