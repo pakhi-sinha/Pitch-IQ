@@ -1,240 +1,100 @@
-# 🏏 PitchIQ — AI Cricket Intelligence Platform ⚡
+# PitchIQ
 
-> Transforming cricket footage into actionable insights using AI
+PitchIQ is an AI cricket intelligence dashboard for turning cricket images and short clips into structured shot analysis, wagon wheel maps, tactical summaries, and exportable reports.
 
----
+## What It Does
 
-## 🚀 Overview
+- Upload cricket images or short video clips
+- Extract visual frames from video in the browser
+- Analyze frames through a Vercel serverless Gemini proxy
+- Return strict structured JSON for each delivery
+- Display wagon wheel, shot distribution, ball mix, timeline, story, and commentary
+- Run a built-in demo without an API key
+- Export the analysis as JSON
 
-PitchIQ is an AI-powered cricket analytics platform that converts **unstructured match footage (images/videos)** into **structured, insightful data**.
+## Tech Stack
 
-Instead of manually tracking every shot and delivery, PitchIQ uses AI to:
+- React
+- Vite
+- Recharts
+- Vercel Serverless Functions
+- Gemini API
 
-* Detect shot types and ball types
-* Analyze player behavior
-* Generate match statistics
-* Visualize insights through charts and shot maps
-* Produce human-like match summaries
+## Local Development
 
----
-
-## 🎯 Problem Statement
-
-Tracking detailed cricket data manually is inefficient and incomplete.
-We typically only get:
-
-* Runs scored
-* Ball speed
-* Basic commentary
-
-👉 But not:
-
-* Shot type
-* Player intent
-* Field direction patterns
-
-**PitchIQ solves this by analyzing raw cricket footage using AI.**
-
----
-
-## ✨ Features
-
-### 📥 Smart Input System
-
-* Upload cricket images or short video clips
-* YouTube match preview integration (for reference)
-
----
-
-### 🧠 AI-Powered Analysis
-
-* Shot Type Detection (cover drive, pull, sweep, etc.)
-* Ball Type Classification (yorker, bouncer, good length)
-* Batting Hand Detection
-* Shot Direction (0–360°)
-* Game Phase Identification
-* Confidence Scoring
-
----
-
-### 📊 Match Analytics Dashboard
-
-* Total Runs, Strike Rate, Boundaries, Dot Balls
-* Shot Distribution (Bar Chart)
-* Ball Type Breakdown (Pie Chart)
-* Run Progress & Aggression Insights
-
----
-
-### 🎯 Wagon Wheel Visualization
-
-* Interactive cricket field shot map
-* Color-coded shot directions:
-
-  * 🟢 Boundary
-  * 🔵 Singles
-  * ⚪ Defensive
-
----
-
-### 🕒 Timeline Tracking
-
-Ball-by-ball structured log:
-
-* Timestamp
-* Shot Type
-* Ball Type
-* Runs
-* Confidence Level
-
----
-
-### 🤖 AI Match Insights
-
-* Generates analytical summaries of player behavior
-* Highlights patterns like:
-
-  * Off-side dominance
-  * Aggressive phases
-  * Defensive strategies
-
----
-
-### 📖 Story Mode
-
-* Converts raw analysis into a **human-readable match narrative**
-
----
-
-### 🔥 Highlight Moment Detection
-
-* Automatically identifies the best shot of the session
-
----
-
-### ⚡ Demo Mode (Hackathon Ready)
-
-* One-click demo with preloaded match data
-* Ensures smooth presentations without dependency on uploads
-
----
-
-### 🎨 Modern UI/UX
-
-* Glassmorphism design
-* Neon gradient accents
-* Animated stats & AI typing effects
-* Fully responsive dashboard
-
----
-
-## 🛠 Tech Stack
-
-* **Frontend:** React + Vite
-* **Charts:** Recharts
-* **AI Model:** Gemini 3 Flash (Vision API)
-* **Video Processing:** HTML5 Video + Canvas
-* **Styling:** CSS (Glassmorphism + Neon UI)
-
----
-
-## ⚙️ How It Works
-
-1. Upload an image or short video clip
-2. Extract frames (for videos)
-3. Send frames to Gemini Vision API
-4. Receive structured JSON analysis
-5. Generate:
-
-   * Stats
-   * Charts
-   * Wagon Wheel
-   * Timeline
-   * AI Insights
-6. Display everything in an interactive dashboard
-
----
-
-## 🧪 Demo
-
-👉 Click **⚡ Run Demo** inside the app to instantly view a full analysis.
-
----
-
-## 📦 Setup Instructions
+Install dependencies:
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/pitchiq.git
-
-# Navigate to project folder
-cd pitchiq
-
-# Install dependencies
 npm install
+```
 
-# Run development server
+Create `.env.local`:
+
+```bash
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+Run with Vercel dev so `/api/analyze` and `/api/commentary` work locally:
+
+```bash
+npx vercel dev
+```
+
+You can also run only the frontend:
+
+```bash
 npm run dev
 ```
 
----
+When running only Vite, the demo works, but live AI analysis requires the Vercel API routes.
 
-## 🔐 Environment Variables
+## Deploy To Vercel
 
-Create a `.env` file:
+1. Push this repository to GitHub.
+2. Import the repo in Vercel.
+3. Set these environment variables in Vercel:
 
-```env
-VITE_GEMINI_API_KEY=your_api_key_here
+```bash
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.0-flash
 ```
 
-⚠️ Do NOT expose your API key publicly.
+4. Deploy.
 
----
+The app is configured with `vercel.json` for a Vite build.
 
-## 🚧 Limitations
+## API Routes
 
-* Requires clear cricket action frames for accurate analysis
-* Cannot directly extract frames from YouTube (browser restrictions)
-* Runs are estimated (not official scoring system)
+`POST /api/analyze`
 
----
+```json
+{
+  "image": "base64-image-data",
+  "mimeType": "image/jpeg"
+}
+```
 
-## 🚀 Future Scope
+Returns:
 
-* Real-time full match analysis (backend processing)
-* Player comparison dashboards
-* Advanced ball tracking & trajectory prediction
-* Integration with live match feeds
+```json
+{
+  "analysis": {
+    "shotType": "cover drive",
+    "ballType": "half volley",
+    "battingHand": "right",
+    "pitchLength": "full",
+    "shotDirection": 48,
+    "shotZone": "off-side",
+    "isBoundary": true,
+    "isDefensive": false,
+    "gamePhase": "powerplay",
+    "confidence": 0.94,
+    "additionalNotes": "The batter commits forward early and opens the face through extra cover."
+  }
+}
+```
 
----
+`POST /api/commentary`
 
-## 💡 Why PitchIQ?
-
-* Converts unstructured video → structured intelligence
-* Saves hours of manual analysis
-* Enables data-driven cricket strategy
-* Useful for coaches, analysts, and players
-
----
-
-## 👩💻 Author
-
-**Pakhi Sinha**
-BCA (AI/ML) — Galgotias University
-
----
-
-## ⭐ Acknowledgements
-
-* Google Gemini API
-* Recharts
-* Open-source community
-
----
-
-## 🏁 Final Note
-
-PitchIQ is not just a project —
-it’s a step toward **AI-powered sports analytics**.
-
-> “Turning cricket footage into actionable intelligence.”
+Accepts an array of analysis objects and returns one concise commentary paragraph.
